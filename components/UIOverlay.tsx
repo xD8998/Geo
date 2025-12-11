@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { GameMode, ObjectType, LevelSettings, VehicleMode, TriggerData, TriggerTarget, LevelData, StartPosData } from '../types';
 import { Play, Square, Trash2, MousePointer2, CheckCircle2, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Eye, EyeOff, Undo, Redo, Copy, RotateCw, RotateCcw, Pause, Cloud, Trees, Settings as SettingsIcon, X, Hand, Zap, Triangle, Circle, Hexagon, Flag, Download, Upload, FileJson, ChevronLeft, ChevronRight, XCircle } from 'lucide-react';
 import { DEFAULT_LEVEL_SETTINGS, COLORS } from '../constants';
@@ -73,6 +73,31 @@ const ToolBtn = ({ active, onClick, children }: { active: boolean, onClick: () =
     </button>
 );
 
+const CreditsOverlay = ({ onClose }: { onClose: () => void }) => {
+    const [step, setStep] = useState(0); // 0: Fade In, 1: Gradient & Scroll, 2: Fade Out
+
+    useEffect(() => {
+        // Step 0 -> 1 after fade in
+        const t1 = setTimeout(() => setStep(1), 100); 
+        // Close after sequence
+        const t2 = setTimeout(() => setStep(2), 5000); 
+        const t3 = setTimeout(onClose, 6000);
+        return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+    }, [onClose]);
+
+    return (
+        <div className={`fixed inset-0 z-[100] transition-opacity duration-1000 ease-in-out pointer-events-auto flex items-center justify-center overflow-hidden ${step === 0 ? 'opacity-0 bg-black' : step === 2 ? 'opacity-0' : 'opacity-100'}`} style={{ backgroundColor: step === 1 ? 'transparent' : 'black' }}>
+            {step === 1 && (
+                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-purple-900 via-black to-black animate-pulse"></div>
+            )}
+            <div className={`relative z-10 text-center transition-all duration-[4000ms] ease-linear transform ${step === 1 ? 'translate-y-[-10vh]' : 'translate-y-[50vh]'}`}>
+                <h2 className="text-3xl font-pusab text-purple-400 mb-4 drop-shadow-[0_0_10px_rgba(168,85,247,0.8)]">Made and developed by:<br/>xD89 aka: Hunter</h2>
+                <p className="text-xl font-mono text-purple-200 opacity-80">Help with vibe AI or sum</p>
+            </div>
+        </div>
+    );
+};
+
 const UIOverlay: React.FC<UIProps> = ({ 
   mode, onSetMode, selectedTool, onSelectTool, 
   selectedCount, onMoveSelection, onDeleteSelection, onDeselect, onDuplicateSelection,
@@ -86,6 +111,7 @@ const UIOverlay: React.FC<UIProps> = ({
   const [specialPage, setSpecialPage] = useState(0); 
   const [showImportModal, setShowImportModal] = useState(false);
   const [importText, setImportText] = useState('');
+  const [showCredits, setShowCredits] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isToolActive = (t: ObjectType, s: number) => selectedTool.type === t && selectedTool.subtype === s;
@@ -127,6 +153,10 @@ const UIOverlay: React.FC<UIProps> = ({
           return next;
       });
   };
+
+  if (showCredits) {
+      return <CreditsOverlay onClose={() => setShowCredits(false)} />;
+  }
 
   if (showImportModal) {
       return (
@@ -283,7 +313,14 @@ const UIOverlay: React.FC<UIProps> = ({
       {/* Top Bar */}
       <div className="absolute top-4 left-4 right-4 flex justify-between items-start pointer-events-auto">
          <div className="bg-black/60 p-3 rounded-xl border border-white/10 backdrop-blur-md">
-            <h1 className="text-xl font-pusab text-yellow-400 drop-shadow-md tracking-wider">GEO ARCHITECT</h1>
+            <h1 
+                className={`text-xl font-pusab text-yellow-400 drop-shadow-md tracking-wider ${isEditor ? 'cursor-pointer hover:text-yellow-300 transition-colors' : ''}`}
+                onClick={() => {
+                    if (isEditor) setShowCredits(true);
+                }}
+            >
+                GEO ARCHITECT
+            </h1>
             <div className={`text-xs font-mono mt-1 font-bold ${isEditor ? 'text-green-400' : isPlaytest ? 'text-blue-400' : 'text-purple-400'}`}>
                MODE: {mode}
             </div>
