@@ -29,6 +29,7 @@ export interface GameEngineRef {
   getSelectedObject: () => LevelObject | undefined;
 }
 
+
 interface ColorEffect {
     target: TriggerTarget;
     startColor: string;
@@ -840,7 +841,15 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
             }
 
             if (isOverlapping) {
+                const deletedId = levelData.current[i].id;
                 levelData.current.splice(i, 1);
+                
+                // If the deleted object was selected, remove it from selection
+                if (selectedObjects.current.has(deletedId)) {
+                    selectedObjects.current.delete(deletedId);
+                    notifySelection(); // Update UI count
+                }
+                
                 deleted = true;
                 break; // One at a time
             }
@@ -1574,10 +1583,10 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
                       p.gravityReversed = !p.gravityReversed;
                       p.onGround = false;
                       
-                      // User requested "small smooth up... not as smooth as portals but still a lil"
-                      // Standard forces are 16.5 (Yellow), 10 (Pink).
-                      // 9.0 is soft.
-                      const magnitude = 9.0;
+                      let magnitude = 9.0;
+                      if (p.vehicle === VehicleMode.SHIP) {
+                          magnitude = 4.0; // Reduced force for ship to match orb
+                      }
                       
                       if (p.gravityReversed) p.vy = -magnitude; 
                       else p.vy = magnitude; 
@@ -2314,7 +2323,7 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
     }
 
     // DRAW PLAYER
-    if (mode !== GameMode.EDITOR && mode !== GameMode.PAUSED) {
+    if (mode !== GameMode.EDITOR) {
         const p = player.current;
         if (!p.dead) {
              ctx.save();
