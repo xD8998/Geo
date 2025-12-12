@@ -149,13 +149,13 @@ const UIOverlay: React.FC<UIProps> = ({
       }
   };
 
-  const SPECIAL_TITLES = ['PADS', 'ORBS', 'GAMEMODES', 'GRAVITY'];
+  const SPECIAL_TITLES = ['PADS', 'ORBS', 'GAMEMODES', 'GRAVITY', 'MIRROR'];
 
   const cycleSpecialPage = (direction: number) => {
       setSpecialPage(prev => {
           let next = prev + direction;
-          if (next < 0) next = 3;
-          if (next > 3) next = 0;
+          if (next < 0) next = 4;
+          if (next > 4) next = 0;
           return next;
       });
   };
@@ -646,6 +646,24 @@ const UIOverlay: React.FC<UIProps> = ({
                                          <svg viewBox="0 0 40 40" className="w-full h-full">
                                              <path d="M 10 5 L 30 5 C 30 15 24 18 24 20 C 24 22 30 25 30 35 L 10 35 C 10 25 16 22 16 20 C 16 18 10 15 10 5 Z" fill="rgba(0,255,0,0.6)" stroke="white" strokeWidth="2"/>
                                              <path d="M 20 12 L 25 20 L 20 28 L 15 20 Z" fill="white"/>
+                                         </svg>
+                                     </ToolBtn>
+                                </>
+                            )}
+                            {specialPage === 4 && ( // MIRROR
+                                <>
+                                     <ToolBtn active={isToolActive(ObjectType.PORTAL, 6)} onClick={() => onSelectTool(ObjectType.PORTAL, 6)}>
+                                         <svg viewBox="0 0 40 40" className="w-full h-full p-1">
+                                             <ellipse cx="20" cy="20" rx="6.5" ry="18" fill="none" stroke="#00aaff" strokeWidth="2" />
+                                             <ellipse cx="20" cy="20" rx="5" ry="13" fill="none" stroke="#00aaff" strokeWidth="2" />
+                                             <ellipse cx="20" cy="20" rx="3.5" ry="8" fill="#00aaff" stroke="none" />
+                                         </svg>
+                                     </ToolBtn>
+                                     <ToolBtn active={isToolActive(ObjectType.PORTAL, 7)} onClick={() => onSelectTool(ObjectType.PORTAL, 7)}>
+                                         <svg viewBox="0 0 40 40" className="w-full h-full p-1">
+                                             <ellipse cx="20" cy="20" rx="6.5" ry="18" fill="none" stroke="#ffaa00" strokeWidth="2" />
+                                             <ellipse cx="20" cy="20" rx="5" ry="13" fill="none" stroke="#ffaa00" strokeWidth="2" />
+                                             <ellipse cx="20" cy="20" rx="3.5" ry="8" fill="#ffaa00" stroke="none" />
                                          </svg>
                                      </ToolBtn>
                                 </>
