@@ -79,6 +79,7 @@ export interface Player {
   finished: boolean;
   vehicle: VehicleMode;
   gravityReversed: boolean;
+  mirrored: boolean;
 }
 
 export interface Camera {
