@@ -1172,8 +1172,8 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
              const midY = (floor + ceiling) / 2;
              targetY = midY - (visibleHeight * 0.5);
         } else {
-             targetY = p.y - (visibleHeight * 0.55); // Centered
-             const maxCamY = FLOOR_Y - visibleHeight + 150; // Increased to show more ground
+             targetY = p.y - (visibleHeight * 0.45); // Player at 45% of screen height (higher up)
+             const maxCamY = FLOOR_Y - visibleHeight + 125; // Allow more ground visibility
              if (targetY > maxCamY) targetY = maxCamY;
         }
 
