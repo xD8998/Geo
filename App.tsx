@@ -128,11 +128,43 @@ const App: React.FC = () => {
       URL.revokeObjectURL(url);
   };
 
-  const handleImport = (data: LevelData) => {
+  const handleImport = (data: any) => {
       if (engineRef.current) {
+          let objects = Array.isArray(data) ? data : (data.objects || []);
+          let settings = Array.isArray(data) ? undefined : data.settings;
+
+          // Safety Checks & Sanitization
+          const sanitizedObjects = objects.filter((obj: any) => {
+              // Rule 3: Exclude Start Pos behind start (x < 0)
+              if (obj.type === ObjectType.START_POS && obj.x < 0) {
+                  return false;
+              }
+              return true;
+          }).map((obj: any) => {
+              const newObj = { ...obj };
+              
+              // Rule 1: Reset Trigger Rotation
+              if (newObj.type === ObjectType.TRIGGER) {
+                  newObj.rotation = 0;
+              }
+              
+              // Rule 2: Snap Block Rotation to nearest 90
+              if (newObj.type === ObjectType.BLOCK) {
+                  const currentRot = newObj.rotation || 0;
+                  newObj.rotation = Math.round(currentRot / 90) * 90;
+              }
+              
+              return newObj;
+          });
+
+          const sanitizedData = {
+              objects: sanitizedObjects,
+              settings: settings || DEFAULT_LEVEL_SETTINGS
+          };
+
           // Pass true to keep history, enabling undo
-          engineRef.current.setLevel(data, true);
-          if (data.settings) setCurrentSettings(data.settings);
+          engineRef.current.setLevel(sanitizedData, true);
+          if (sanitizedData.settings) setCurrentSettings(sanitizedData.settings);
           
           // Reset selection
           setSelectedCount(0);
