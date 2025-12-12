@@ -109,7 +109,8 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
     vx: 0, vy: 0, rotation: 0,
     onGround: false, dead: false, finished: false,
     vehicle: VehicleMode.CUBE,
-    gravityReversed: false
+    gravityReversed: false,
+    mirrored: false
   });
   
   const activeFloorY = useRef<number>(FLOOR_Y);
@@ -119,6 +120,7 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
   const targetCeilingY = useRef<number>(-99999);
 
   const camera = useRef<Camera>({ x: 0, y: 0, zoom: 1.2 });
+  const mirrorTransition = useRef<number>(0); // 0 = Normal, 1 = Mirrored
   
   // Input State
   const mouse = useRef({ x: 0, y: 0, isDown: false, isRightDown: false, dragStartX: 0, dragStartY: 0 });
@@ -372,8 +374,11 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
       vx: PLAYER_SPEED, vy: 0, rotation: 0,
       onGround: true, dead: false, finished: false,
       vehicle: startMode,
-      gravityReversed: startGravityReversed
+      gravityReversed: startGravityReversed,
+      mirrored: false
     };
+    
+    mirrorTransition.current = 0; // Reset mirror
     
     // Always clear markers/used objects on reset
     deathMarkers.current = [];
@@ -1176,6 +1181,20 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
           activeCeilingY.current = activeCeilingY.current + (destCeil - activeCeilingY.current) * 0.1;
       }
       
+      // Mirror Transition Logic - Only valid in VERIFY mode
+      let targetMirror = 0;
+      if ((currentMode === GameMode.VERIFY || currentMode === GameMode.VERIFY_PAUSED) && player.current.mirrored) {
+          targetMirror = 1;
+      } else {
+          // Reset logic if not verify or if player not mirrored
+          // Only reset state if entering Editor or Playtest (explicit change of context)
+          if (currentMode === GameMode.EDITOR || currentMode === GameMode.PLAYTEST) {
+              player.current.mirrored = false;
+              targetMirror = 0;
+          }
+      }
+      mirrorTransition.current += (targetMirror - mirrorTransition.current) * 0.1;
+      
       // Color Interpolation Logic
       if (currentMode !== GameMode.PAUSED && currentMode !== GameMode.VERIFY_PAUSED) {
           if (currentMode === GameMode.EDITOR) {
@@ -1326,6 +1345,8 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
                           if (obj.subtype === 3) color = COLORS.objPortalYellow;
                           if (obj.subtype === 4) color = COLORS.objPortalBlue;
                           if (obj.subtype === 5) color = COLORS.objPortalGreen;
+                          if (obj.subtype === 6) color = COLORS.objPortalBlueMirror;
+                          if (obj.subtype === 7) color = COLORS.objPortalOrange;
 
                            particles.current.push({
                              x: cx + (Math.random() - 0.5) * 20,
@@ -1783,6 +1804,15 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
                       p.gravityReversed = !p.gravityReversed;
                   }
 
+                  // MIRROR PORTALS - Only Active in Verify Mode
+                  if (modeRef.current === GameMode.VERIFY) {
+                      if (obj.subtype === 6) { // Blue Mirror (Normal)
+                          p.mirrored = false;
+                      } else if (obj.subtype === 7) { // Orange Mirror (Invert)
+                          p.mirrored = true;
+                      }
+                  }
+
                   particles.current.push({ x: p.x, y: p.y, vx: 0, vy: 0, life: 1, color: '#fff', type: 'ring', size: 50 });
               }
           }
@@ -2050,6 +2080,8 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
           if (obj.subtype === 3) color = COLORS.objPortalYellow;
           if (obj.subtype === 4) color = COLORS.objPortalBlue;
           if (obj.subtype === 5) color = COLORS.objPortalGreen;
+          if (obj.subtype === 6) color = COLORS.objPortalBlueMirror;
+          if (obj.subtype === 7) color = COLORS.objPortalOrange;
 
           // Use passed coordinates to determine center
           const cx = x + TILE_SIZE / 2;
@@ -2088,7 +2120,7 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
               ctx.ellipse(cx, cy, 5, 40, 0, 0, Math.PI*2);
               ctx.fillStyle = '#fff';
               ctx.fill();
-          } else {
+          } else if (obj.subtype >= 3 && obj.subtype <= 5) {
               // GRAVITY PORTALS (New Tech Design)
               // Shape: Smoother, more continuous curve or angular "tech" look.
               
@@ -2155,6 +2187,46 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
               }
               ctx.closePath();
               ctx.fill();
+          } else {
+              // MIRROR PORTALS (Subtype 6 & 7) - New Tall Oval Design
+              
+              // Define tall ovals to match the ~120px height hitbox
+              // Draw 3 concentric tall ellipses (rings)
+              
+              const radiusX = 20;
+              const radiusY_Outer = 55;
+              const radiusY_Mid = 40;
+              const radiusY_Inner = 25;
+              
+              ctx.lineWidth = 3;
+              ctx.strokeStyle = color;
+              ctx.fillStyle = color;
+
+              // Outer Ring
+              ctx.beginPath();
+              ctx.ellipse(cx, cy, radiusX, radiusY_Outer, 0, 0, Math.PI * 2);
+              ctx.stroke();
+
+              // Mid Ring
+              ctx.beginPath();
+              ctx.ellipse(cx, cy, radiusX - 5, radiusY_Mid, 0, 0, Math.PI * 2);
+              ctx.stroke();
+
+              // Inner Ring (Filled slightly? or just thick stroke)
+              // Let's make the inner one filled for impact
+              ctx.beginPath();
+              ctx.ellipse(cx, cy, radiusX - 10, radiusY_Inner, 0, 0, Math.PI * 2);
+              ctx.fill();
+              
+              // Glow Effect
+              ctx.shadowColor = color;
+              ctx.shadowBlur = 15;
+              ctx.stroke(); // Re-stroke to apply glow to existing paths? No, canvas state is tricky.
+              // Just draw the outer ring again for glow
+              ctx.beginPath();
+              ctx.ellipse(cx, cy, radiusX, radiusY_Outer, 0, 0, Math.PI * 2);
+              ctx.stroke();
+              ctx.shadowBlur = 0;
           }
 
       } else if (obj.type === ObjectType.DECO) {
@@ -2205,10 +2277,23 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, width, height);
 
+    const zoom = camera.current.zoom;
+    const mirrorVal = mirrorTransition.current;
+    
+    // --- MIRRORED GAMEPLAY LAYER (Objects, Player, Particles, Ground) ---
+    // Everything that should be flipped must be inside this save/restore block
     ctx.save();
     
+    // Apply Mirror Flip Animation
+    if (Math.abs(mirrorVal) > 0.001) {
+        const cx = width / 2;
+        // Flip horizontally around center of screen
+        ctx.translate(cx, 0);
+        ctx.scale(1 - 2 * mirrorVal, 1);
+        ctx.translate(-cx, 0);
+    }
+
     // SCALE SCENE BASED ON ZOOM
-    const zoom = camera.current.zoom;
     ctx.scale(zoom, zoom);
     ctx.translate(-camera.current.x, -camera.current.y);
 
@@ -2219,24 +2304,36 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
     const visibleWidth = width / zoom;
     const visibleHeight = height / zoom;
 
+    // Viewport Culling Bounds (with margin to prevent popping)
+    // This fixes the mirror artifact where distant objects are drawn during the scale transition
+    const cullMargin = 300; 
+    const cullMinX = camera.current.x - cullMargin;
+    const cullMaxX = camera.current.x + visibleWidth + cullMargin;
+
     if (mode === GameMode.VERIFY && finishWallX.current < 900000) {
-        // FILL INFINITE WHITE WALL FROM START POINT
-        ctx.fillStyle = COLORS.endWall; // Use the same consistent alpha/color as the start
-        // Fill from the wall start all the way to a very large number
-        ctx.fillRect(finishWallX.current, -20000, 200000, 40000);
-        
-        // Optional: Keep the white stroke line to define the exact trigger point
-        ctx.strokeStyle = 'white';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(finishWallX.current, -20000);
-        ctx.lineTo(finishWallX.current, 20000);
-        ctx.stroke();
+        // Only draw wall if it's potentially visible
+        if (finishWallX.current < cullMaxX) {
+            // FILL INFINITE WHITE WALL FROM START POINT
+            ctx.fillStyle = COLORS.endWall; 
+            ctx.fillRect(finishWallX.current, -20000, 200000, 40000);
+            
+            // Optional: Keep the white stroke line to define the exact trigger point
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(finishWallX.current, -20000);
+            ctx.lineTo(finishWallX.current, 20000);
+            ctx.stroke();
+        }
     }
 
     // DRAW OBJECTS
     levelData.current.forEach(obj => {
-        const x = obj.x * TILE_SIZE;
+        const objX = obj.x * TILE_SIZE;
+        // Strict culling during gameplay to prevent mirror artifacts
+        if (objX < cullMinX || objX > cullMaxX) return;
+
+        const x = objX;
         const y = obj.y * TILE_SIZE;
         ctx.save();
         ctx.translate(x + TILE_SIZE/2, y + TILE_SIZE/2);
@@ -2296,117 +2393,7 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
         }
         ctx.restore();
     });
-
-    const floorAlpha = isEditor ? 0.3 : 1.0;
     
-    // CUSTOM GROUND COLOR (Use Display Settings)
-    ctx.globalAlpha = floorAlpha;
-    ctx.fillStyle = displaySettings.current.groundColor;
-    ctx.fillRect(camera.current.x, activeFloorY.current, visibleWidth, 1000);
-    ctx.globalAlpha = 1.0;
-
-    // CUSTOM LINE COLOR (Use Display Settings)
-    ctx.strokeStyle = displaySettings.current.lineColor;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(camera.current.x, activeFloorY.current);
-    ctx.lineTo(camera.current.x + visibleWidth, activeFloorY.current);
-    ctx.stroke();
-
-    // Draw Default Ground Reference (if displaced)
-    if ((mode === GameMode.EDITOR || mode === GameMode.PAUSED) && Math.abs(activeFloorY.current - FLOOR_Y) > 10) {
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([10, 10]);
-        ctx.beginPath();
-        ctx.moveTo(camera.current.x, FLOOR_Y);
-        ctx.lineTo(camera.current.x + visibleWidth, FLOOR_Y);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-        ctx.font = 'bold 12px monospace';
-        ctx.fillText("DEFAULT GROUND", camera.current.x + 20, FLOOR_Y - 10);
-    }
-    
-    // Draw Ceiling (if visible/active)
-    // Only draw if targetCeiling is active or it's currently animating away but still visible
-    if (activeCeilingY.current > camera.current.y - 1000) {
-        ctx.globalAlpha = floorAlpha;
-        ctx.fillStyle = displaySettings.current.groundColor; 
-        ctx.fillRect(camera.current.x, activeCeilingY.current - 1000, visibleWidth, 1000);
-        ctx.globalAlpha = 1.0;
-        
-        ctx.strokeStyle = displaySettings.current.lineColor;
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(camera.current.x, activeCeilingY.current);
-        ctx.lineTo(camera.current.x + visibleWidth, activeCeilingY.current);
-        ctx.stroke();
-    }
-    
-    if (drawGridLines) {
-       drawGrid(ctx, visibleWidth, visibleHeight);
-    }
-
-    if (mode === GameMode.EDITOR || mode === GameMode.PAUSED) {
-        const startY = 11 * TILE_SIZE;
-        ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
-        ctx.fillRect(0, startY, TILE_SIZE, TILE_SIZE);
-        ctx.strokeStyle = '#0f0';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(0, startY, TILE_SIZE, TILE_SIZE);
-    }
-
-    // DRAW DELETE PREVIEW
-    if (selectedToolRef.current.type === ObjectType.DELETE && (mode === GameMode.EDITOR || mode === GameMode.PAUSED)) {
-        const currentWorldX = (mouse.current.x / zoom) + camera.current.x;
-        const currentWorldY = (mouse.current.y / zoom) + camera.current.y;
-        const gX = Math.floor(currentWorldX / TILE_SIZE) * TILE_SIZE;
-        const gY = Math.floor(currentWorldY / TILE_SIZE) * TILE_SIZE;
-
-        ctx.save();
-        ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
-        ctx.fillRect(gX, gY, TILE_SIZE, TILE_SIZE);
-        ctx.strokeStyle = '#ff0000';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(gX, gY, TILE_SIZE, TILE_SIZE);
-        ctx.restore();
-    }
-
-    // DRAW PLACEMENT PREVIEW
-    if ((mode === GameMode.EDITOR || mode === GameMode.PAUSED) && 
-        selectedToolRef.current.type !== ObjectType.TOOL && 
-        selectedToolRef.current.type !== ObjectType.DELETE) {
-            
-        const currentWorldX = (mouse.current.x / zoom) + camera.current.x;
-        const currentWorldY = (mouse.current.y / zoom) + camera.current.y;
-        
-        const gX = Math.floor(currentWorldX / TILE_SIZE) * TILE_SIZE;
-        const gY = Math.floor(currentWorldY / TILE_SIZE) * TILE_SIZE;
-
-        const previewObj: LevelObject = {
-            id: 'preview',
-            x: 0, 
-            y: 0,
-            type: selectedToolRef.current.type,
-            subtype: selectedToolRef.current.subtype,
-            rotation: lastToolRotation.current, 
-            triggerData: selectedToolRef.current.type === ObjectType.TRIGGER ? { target: 'bgColorTop', color: '#ff0000', duration: 0.5, touchTrigger: false } : undefined,
-            startPosData: selectedToolRef.current.type === ObjectType.START_POS ? { mode: VehicleMode.CUBE, reverseGravity: false, enabled: true } : undefined
-        };
-
-        // Don't show preview for Start Pos if X < 0
-        if (!(selectedToolRef.current.type === ObjectType.START_POS && gX < 0)) {
-            ctx.save();
-            ctx.globalAlpha = 0.5;
-            ctx.translate(gX + TILE_SIZE/2, gY + TILE_SIZE/2);
-            if (lastToolRotation.current) ctx.rotate(lastToolRotation.current * Math.PI / 180);
-            drawObject(ctx, previewObj, -TILE_SIZE/2, -TILE_SIZE/2);
-            ctx.restore();
-        }
-    }
-
     // DRAW PLAYER
     if (mode !== GameMode.EDITOR) {
         const p = player.current;
@@ -2511,7 +2498,7 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
         ctx.stroke();
     }
 
-    // DRAW SELECT BOX
+    // DRAW SELECT BOX (Mirrored Layer)
     if (selectedToolRef.current.type === ObjectType.TOOL && boxSelectStart.current && (mode === GameMode.EDITOR || mode === GameMode.PAUSED)) {
         const startX = boxSelectStart.current.x;
         const startY = boxSelectStart.current.y;
@@ -2532,8 +2519,121 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
         ctx.fillRect(startX, startY, w, h);
         ctx.restore();
     }
+    
+    // DRAW PREVIEWS (Mirrored Layer)
+    // Delete Preview
+    if (selectedToolRef.current.type === ObjectType.DELETE && (mode === GameMode.EDITOR || mode === GameMode.PAUSED)) {
+        const currentWorldX = (mouse.current.x / zoom) + camera.current.x;
+        const currentWorldY = (mouse.current.y / zoom) + camera.current.y;
+        const gX = Math.floor(currentWorldX / TILE_SIZE) * TILE_SIZE;
+        const gY = Math.floor(currentWorldY / TILE_SIZE) * TILE_SIZE;
 
-    ctx.restore();
+        ctx.save();
+        ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+        ctx.fillRect(gX, gY, TILE_SIZE, TILE_SIZE);
+        ctx.strokeStyle = '#ff0000';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(gX, gY, TILE_SIZE, TILE_SIZE);
+        ctx.restore();
+    }
+
+    // Placement Preview
+    if ((mode === GameMode.EDITOR || mode === GameMode.PAUSED) && 
+        selectedToolRef.current.type !== ObjectType.TOOL && 
+        selectedToolRef.current.type !== ObjectType.DELETE) {
+            
+        const currentWorldX = (mouse.current.x / zoom) + camera.current.x;
+        const currentWorldY = (mouse.current.y / zoom) + camera.current.y;
+        
+        const gX = Math.floor(currentWorldX / TILE_SIZE) * TILE_SIZE;
+        const gY = Math.floor(currentWorldY / TILE_SIZE) * TILE_SIZE;
+
+        const previewObj: LevelObject = {
+            id: 'preview',
+            x: 0, 
+            y: 0,
+            type: selectedToolRef.current.type,
+            subtype: selectedToolRef.current.subtype,
+            rotation: lastToolRotation.current, 
+            triggerData: selectedToolRef.current.type === ObjectType.TRIGGER ? { target: 'bgColorTop', color: '#ff0000', duration: 0.5, touchTrigger: false } : undefined,
+            startPosData: selectedToolRef.current.type === ObjectType.START_POS ? { mode: VehicleMode.CUBE, reverseGravity: false, enabled: true } : undefined
+        };
+
+        // Don't show preview for Start Pos if X < 0
+        if (!(selectedToolRef.current.type === ObjectType.START_POS && gX < 0)) {
+            ctx.save();
+            ctx.globalAlpha = 0.5;
+            ctx.translate(gX + TILE_SIZE/2, gY + TILE_SIZE/2);
+            if (lastToolRotation.current) ctx.rotate(lastToolRotation.current * Math.PI / 180);
+            drawObject(ctx, previewObj, -TILE_SIZE/2, -TILE_SIZE/2);
+            ctx.restore();
+        }
+    }
+
+    // DRAW GRID & GROUND LINES
+    // Ground needs to be mirrored so that it scrolls correctly relative to the player's apparent motion.
+    
+    const floorAlpha = isEditor ? 0.3 : 1.0;
+    
+    // CUSTOM GROUND COLOR (Use Display Settings)
+    ctx.globalAlpha = floorAlpha;
+    ctx.fillStyle = displaySettings.current.groundColor;
+    ctx.fillRect(camera.current.x, activeFloorY.current, visibleWidth, 1000);
+    ctx.globalAlpha = 1.0;
+
+    // CUSTOM LINE COLOR (Use Display Settings)
+    ctx.strokeStyle = displaySettings.current.lineColor;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(camera.current.x, activeFloorY.current);
+    ctx.lineTo(camera.current.x + visibleWidth, activeFloorY.current);
+    ctx.stroke();
+
+    // Draw Default Ground Reference (if displaced)
+    if ((mode === GameMode.EDITOR || mode === GameMode.PAUSED) && Math.abs(activeFloorY.current - FLOOR_Y) > 10) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([10, 10]);
+        ctx.beginPath();
+        ctx.moveTo(camera.current.x, FLOOR_Y);
+        ctx.lineTo(camera.current.x + visibleWidth, FLOOR_Y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.font = 'bold 12px monospace';
+        ctx.fillText("DEFAULT GROUND", camera.current.x + 20, FLOOR_Y - 10);
+    }
+    
+    // Draw Ceiling (if visible/active)
+    if (activeCeilingY.current > camera.current.y - 1000) {
+        ctx.globalAlpha = floorAlpha;
+        ctx.fillStyle = displaySettings.current.groundColor; 
+        ctx.fillRect(camera.current.x, activeCeilingY.current - 1000, visibleWidth, 1000);
+        ctx.globalAlpha = 1.0;
+        
+        ctx.strokeStyle = displaySettings.current.lineColor;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(camera.current.x, activeCeilingY.current);
+        ctx.lineTo(camera.current.x + visibleWidth, activeCeilingY.current);
+        ctx.stroke();
+    }
+
+    if (drawGridLines) {
+       drawGrid(ctx, visibleWidth, visibleHeight);
+    }
+    
+    if (mode === GameMode.EDITOR || mode === GameMode.PAUSED) {
+        const startY = 11 * TILE_SIZE;
+        ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
+        ctx.fillRect(0, startY, TILE_SIZE, TILE_SIZE);
+        ctx.strokeStyle = '#0f0';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(0, startY, TILE_SIZE, TILE_SIZE);
+    }
+
+    ctx.restore(); // END MIRRORED LAYER (Everything inside is flipped)
   };
 
   return (
