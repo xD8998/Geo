@@ -116,6 +116,12 @@ const UIOverlay: React.FC<UIProps> = ({
 
   const isToolActive = (t: ObjectType, s: number) => selectedTool.type === t && selectedTool.subtype === s;
 
+  // Helper to remove focus from buttons after click to prevent Spacebar from triggering them during gameplay
+  const handleBtnClick = (action: () => void) => (e: React.MouseEvent<HTMLButtonElement>) => {
+      e.currentTarget.blur();
+      action();
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
@@ -329,31 +335,31 @@ const UIOverlay: React.FC<UIProps> = ({
 
          <div className={`flex gap-2 ${isVerify ? 'opacity-0 hover:opacity-100 transition-opacity duration-300' : ''}`}>
             {isEditor && (
-                <button onClick={onOpenSettings} className="p-2 rounded bg-gray-700 hover:bg-gray-600 text-white mr-2" title="Level Settings">
+                <button onClick={handleBtnClick(onOpenSettings)} className="p-2 rounded bg-gray-700 hover:bg-gray-600 text-white mr-2" title="Level Settings">
                     <SettingsIcon size={18}/>
                 </button>
             )}
 
-            <button onClick={onToggleHitboxes} className={`p-2 rounded hover:bg-gray-600 text-white border border-transparent ${showHitboxes ? 'bg-green-900/50 border-green-500/50' : 'bg-gray-700'}`} title="Toggle Hitboxes">
+            <button onClick={handleBtnClick(onToggleHitboxes)} className={`p-2 rounded hover:bg-gray-600 text-white border border-transparent ${showHitboxes ? 'bg-green-900/50 border-green-500/50' : 'bg-gray-700'}`} title="Toggle Hitboxes">
                {showHitboxes ? <Eye size={18}/> : <EyeOff size={18}/>}
             </button>
             
             {isEditor && (
               <>
                  <div className="flex gap-2 mr-4">
-                    <button onClick={onUndo} disabled={!canUndo} className={`bg-gray-700 p-2 rounded hover:bg-gray-600 text-white ${!canUndo ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''}`}><Undo size={18}/></button>
-                    <button onClick={onRedo} disabled={!canRedo} className={`bg-gray-700 p-2 rounded hover:bg-gray-600 text-white ${!canRedo ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''}`}><Redo size={18}/></button>
+                    <button onClick={handleBtnClick(onUndo)} disabled={!canUndo} className={`bg-gray-700 p-2 rounded hover:bg-gray-600 text-white ${!canUndo ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''}`}><Undo size={18}/></button>
+                    <button onClick={handleBtnClick(onRedo)} disabled={!canRedo} className={`bg-gray-700 p-2 rounded hover:bg-gray-600 text-white ${!canRedo ? 'opacity-40 cursor-not-allowed pointer-events-none' : ''}`}><Redo size={18}/></button>
                  </div>
 
                  {isPaused ? (
                     <>
-                        <button onClick={() => onSetMode(GameMode.PLAYTEST)} className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded shadow-[0_3px_0_#166534] active:translate-y-0.5 active:shadow-none flex items-center gap-2"><Play size={16} fill="currentColor" /> Resume</button>
-                        <button onClick={() => onSetMode(GameMode.EDITOR)} className="bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-4 rounded shadow-[0_3px_0_#991b1b] active:translate-y-0.5 active:shadow-none flex items-center gap-2"><Square size={16} fill="currentColor" /> Stop</button>
+                        <button onClick={handleBtnClick(() => onSetMode(GameMode.PLAYTEST))} className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded shadow-[0_3px_0_#166534] active:translate-y-0.5 active:shadow-none flex items-center gap-2"><Play size={16} fill="currentColor" /> Resume</button>
+                        <button onClick={handleBtnClick(() => onSetMode(GameMode.EDITOR))} className="bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-4 rounded shadow-[0_3px_0_#991b1b] active:translate-y-0.5 active:shadow-none flex items-center gap-2"><Square size={16} fill="currentColor" /> Stop</button>
                     </>
                  ) : (
                     <>
-                        <button onClick={() => onSetMode(GameMode.PLAYTEST)} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded shadow-[0_3px_0_#1e40af] active:translate-y-0.5 active:shadow-none flex items-center gap-2"><Play size={16} fill="currentColor" /> Playtest</button>
-                        <button onClick={() => onSetMode(GameMode.VERIFY)} className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded shadow-[0_3px_0_#166534] active:translate-y-0.5 active:shadow-none flex items-center gap-2"><CheckCircle2 size={16} /> Verify</button>
+                        <button onClick={handleBtnClick(() => onSetMode(GameMode.PLAYTEST))} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded shadow-[0_3px_0_#1e40af] active:translate-y-0.5 active:shadow-none flex items-center gap-2"><Play size={16} fill="currentColor" /> Playtest</button>
+                        <button onClick={handleBtnClick(() => onSetMode(GameMode.VERIFY))} className="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded shadow-[0_3px_0_#166534] active:translate-y-0.5 active:shadow-none flex items-center gap-2"><CheckCircle2 size={16} /> Verify</button>
                     </>
                  )}
               </>
@@ -361,8 +367,8 @@ const UIOverlay: React.FC<UIProps> = ({
 
             {isPlaytest && (
                <>
-                   <button onClick={() => onSetMode(GameMode.PAUSED)} className="bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-2 px-4 rounded shadow-[0_3px_0_#854d0e] active:translate-y-0.5 active:shadow-none flex items-center gap-2"><Pause size={16} fill="currentColor" /> Pause</button>
-                   <button onClick={() => onSetMode(GameMode.EDITOR)} className="bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-4 rounded shadow-[0_3px_0_#991b1b] active:translate-y-0.5 active:shadow-none flex items-center gap-2"><Square size={16} fill="currentColor" /> Stop</button>
+                   <button onClick={handleBtnClick(() => onSetMode(GameMode.PAUSED))} className="bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-2 px-4 rounded shadow-[0_3px_0_#854d0e] active:translate-y-0.5 active:shadow-none flex items-center gap-2"><Pause size={16} fill="currentColor" /> Pause</button>
+                   <button onClick={handleBtnClick(() => onSetMode(GameMode.EDITOR))} className="bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-4 rounded shadow-[0_3px_0_#991b1b] active:translate-y-0.5 active:shadow-none flex items-center gap-2"><Square size={16} fill="currentColor" /> Stop</button>
                </>
             )}
          </div>
