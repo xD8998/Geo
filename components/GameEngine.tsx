@@ -348,10 +348,10 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
         
         if (startPositions.length > 0) {
             // Sort: 
-            // 1. Left-most X (Ascending). User wants "farther to the left".
-            // 2. Most recent (Descending Index) if "same Y pos" (interpreted as tie-breaker or same location).
+            // 1. Right-most X (Descending). Highest X takes priority.
+            // 2. Most recent (Descending Index) as tie-breaker.
             startPositions.sort((a, b) => {
-                if (Math.abs(a.obj.x - b.obj.x) > 0.01) return a.obj.x - b.obj.x;
+                if (Math.abs(a.obj.x - b.obj.x) > 0.01) return b.obj.x - a.obj.x; // Descending Sort
                 return b.index - a.index;
             });
             
@@ -393,11 +393,96 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
     activeFloorY.current = FLOOR_Y;
     targetFloorY.current = FLOOR_Y;
     
-    // Reset Colors
-    displaySettings.current = { ...levelSettings.current };
-    activeEffects.current = [];
+    // Reset Colors & Recalculate State based on Start Pos
     triggeredIds.current.clear();
     frameCount.current = 0;
+    
+    const spawnFrame = startX / PLAYER_SPEED; // Approximate frame count at spawn
+    
+    // 1. Collect and Sort Triggers before spawn
+    const relevantTriggers = levelData.current.filter(o => 
+        o.type === ObjectType.TRIGGER && 
+        o.triggerData && 
+        !o.triggerData.touchTrigger &&
+        (o.x * TILE_SIZE + TILE_SIZE/2) <= (startX + player.current.w/2) // Trigger center is before or at spawn center
+    ).sort((a, b) => a.x - b.x); // Sort by X ascending
+    
+    // 2. Simulation Loop
+    let currentColors = { ...levelSettings.current };
+    let runningEffects: {
+        target: TriggerTarget;
+        startColor: string;
+        endColor: string;
+        startTime: number; // Absolute frame
+        duration: number;
+        id: string;
+    }[] = [];
+    
+    for (const t of relevantTriggers) {
+        if (!t.triggerData) continue;
+        
+        const triggerTime = (t.x * TILE_SIZE + TILE_SIZE/2) / PLAYER_SPEED;
+        const target = t.triggerData.target;
+        
+        // Find if there is an active effect for this target to determine base color
+        const existingEffectIndex = runningEffects.findIndex(e => e.target === target);
+        let baseColor = currentColors[target];
+        
+        if (existingEffectIndex !== -1) {
+            const eff = runningEffects[existingEffectIndex];
+            const progress = (triggerTime - eff.startTime) / eff.duration;
+            if (progress >= 1) {
+                baseColor = eff.endColor;
+            } else {
+                baseColor = interpolateColor(eff.startColor, eff.endColor, Math.max(0, progress));
+            }
+            runningEffects.splice(existingEffectIndex, 1);
+        }
+        
+        currentColors[target] = baseColor;
+        const durationFrames = t.triggerData.duration * 60;
+        
+        if (durationFrames <= 0) {
+            currentColors[target] = t.triggerData.color;
+        } else {
+            runningEffects.push({
+                target: target,
+                startColor: baseColor,
+                endColor: t.triggerData.color,
+                startTime: triggerTime,
+                duration: durationFrames,
+                id: t.id
+            });
+        }
+        triggeredIds.current.add(t.id);
+    }
+    
+    // 3. Fast Forward to Spawn Time
+    const finalColors = { ...currentColors };
+    const finalActiveEffects: ColorEffect[] = [];
+    
+    runningEffects.forEach(eff => {
+        const progress = (spawnFrame - eff.startTime) / eff.duration;
+        
+        if (progress >= 1) {
+            finalColors[eff.target] = eff.endColor;
+        } else {
+            const colorAtSpawn = interpolateColor(eff.startColor, eff.endColor, Math.max(0, progress));
+            finalColors[eff.target] = colorAtSpawn;
+            
+            // Add to engine active effects with negative start time relative to now (frame 0)
+            finalActiveEffects.push({
+                target: eff.target,
+                startColor: eff.startColor,
+                endColor: eff.endColor,
+                startTime: eff.startTime - spawnFrame, 
+                duration: eff.duration
+            });
+        }
+    });
+    
+    displaySettings.current = finalColors;
+    activeEffects.current = finalActiveEffects;
     
     if (startMode === VehicleMode.SHIP) {
         if (!forVerify && startY < FLOOR_Y - 500) {
