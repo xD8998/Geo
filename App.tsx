@@ -17,6 +17,7 @@ const App: React.FC = () => {
   const [historyState, setHistoryState] = useState({ canUndo: false, canRedo: false });
   const [showSettings, setShowSettings] = useState(false);
   const [currentSettings, setCurrentSettings] = useState<LevelSettings>(DEFAULT_LEVEL_SETTINGS);
+  const [wasStartPosUsed, setWasStartPosUsed] = useState(false);
   
   const engineRef = useRef<GameEngineRef>(null);
 
@@ -213,6 +214,7 @@ const App: React.FC = () => {
         onSelectionChange={onSelectionChange}
         showHitboxes={showHitboxes}
         onHistoryChange={(canUndo, canRedo) => setHistoryState({ canUndo, canRedo })}
+        onCompletion={(used) => setWasStartPosUsed(used)}
       />
       
       <UIOverlay 
@@ -253,6 +255,7 @@ const App: React.FC = () => {
         
         selectedStartPosData={selectedStartPosData}
         onUpdateStartPos={handleUpdateStartPos}
+        wasStartPosUsed={wasStartPosUsed}
       />
     </div>
   );
