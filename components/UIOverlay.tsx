@@ -39,6 +39,7 @@ interface UIProps {
   
   selectedStartPosData?: StartPosData;
   onUpdateStartPos?: (data: Partial<StartPosData>) => void;
+  wasStartPosUsed?: boolean;
 }
 
 const ColorInput = ({ label, value, onChange, onReset }: { label: string, value: string, onChange: (val: string) => void, onReset: () => void }) => (
@@ -105,7 +106,7 @@ const UIOverlay: React.FC<UIProps> = ({
   onRotateSelection, hasBlockSelected,
   showSettings, onOpenSettings, onCloseSettings, currentSettings, onUpdateSettings,
   selectedTriggerId, selectedTriggerData, onUpdateTrigger,
-  selectedStartPosData, onUpdateStartPos
+  selectedStartPosData, onUpdateStartPos, wasStartPosUsed
 }) => {
   const [tab, setTab] = useState<'blocks' | 'hazards' | 'special' | 'deco' | 'triggers' | 'tools'>('blocks');
   const [specialPage, setSpecialPage] = useState(0); 
@@ -225,6 +226,7 @@ const UIOverlay: React.FC<UIProps> = ({
                          <div className="flex gap-4">
                              <button onClick={() => onUpdateSettings({ startMode: VehicleMode.CUBE })} className={`flex-1 py-3 rounded-lg font-bold border transition-all ${currentSettings.startMode === VehicleMode.CUBE ? 'bg-blue-600 border-blue-400 text-white' : 'bg-gray-800 border-gray-600 text-gray-400 hover:bg-gray-700'}`}>CUBE</button>
                              <button onClick={() => onUpdateSettings({ startMode: VehicleMode.SHIP })} className={`flex-1 py-3 rounded-lg font-bold border transition-all ${currentSettings.startMode === VehicleMode.SHIP ? 'bg-pink-600 border-pink-400 text-white' : 'bg-gray-800 border-gray-600 text-gray-400 hover:bg-gray-700'}`}>SHIP</button>
+                             <button onClick={() => onUpdateSettings({ startMode: VehicleMode.BALL })} className={`flex-1 py-3 rounded-lg font-bold border transition-all ${currentSettings.startMode === VehicleMode.BALL ? 'bg-red-600 border-red-400 text-white' : 'bg-gray-800 border-gray-600 text-gray-400 hover:bg-gray-700'}`}>BALL</button>
                          </div>
                      </div>
                      <div>
@@ -278,12 +280,22 @@ const UIOverlay: React.FC<UIProps> = ({
     return (
       <div className="absolute inset-0 flex items-center justify-center z-50 bg-black/50 backdrop-blur-sm animate-in fade-in zoom-in duration-300 pointer-events-auto">
          <div className="bg-black/90 border-2 border-green-500 rounded-2xl p-8 text-center max-w-md w-full shadow-[0_0_50px_rgba(0,255,0,0.3)]">
-            <h2 className="text-4xl font-pusab text-green-400 mb-2 drop-shadow-[0_4px_0_rgba(0,0,0,1)]">LEVEL VERIFIED!</h2>
-            {showHitboxes ? (
-                <p className="text-yellow-300 mb-8 font-medium">Warning: Hitboxes were enabled.<br/>Now try without hitboxes to truly verify!</p>
+            {wasStartPosUsed ? (
+                <>
+                    <h2 className="text-3xl font-pusab text-blue-400 mb-2 drop-shadow-[0_4px_0_rgba(0,0,0,1)]">TEST RUN COMPLETE</h2>
+                    <p className="text-blue-200 mb-8 font-medium">You used an active start position.<br/>Levels cannot be verified with an active start position.</p>
+                </>
             ) : (
-                <p className="text-gray-300 mb-8 font-medium">The level is complete and ready to share.</p>
+                <>
+                    <h2 className="text-4xl font-pusab text-green-400 mb-2 drop-shadow-[0_4px_0_rgba(0,0,0,1)]">LEVEL VERIFIED!</h2>
+                    {showHitboxes ? (
+                        <p className="text-yellow-300 mb-8 font-medium">Warning: Hitboxes were enabled.<br/>Now try without hitboxes to truly verify!</p>
+                    ) : (
+                        <p className="text-gray-300 mb-8 font-medium">The level is complete and ready to share.</p>
+                    )}
+                </>
             )}
+            
             <div className="flex flex-col gap-4">
                <button onClick={() => onSetMode(GameMode.EDITOR)} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-6 rounded-lg shadow-[0_4px_0_#1e40af] active:translate-y-1 active:shadow-none transition-all">Keep Editing</button>
                <button onClick={() => onSetMode(GameMode.VERIFY)} className="bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-6 rounded-lg shadow-[0_4px_0_#166534] active:translate-y-1 active:shadow-none transition-all">Replay</button>
@@ -394,6 +406,7 @@ const UIOverlay: React.FC<UIProps> = ({
                                   <div className="flex gap-2">
                                       <button onClick={() => onUpdateStartPos({ mode: VehicleMode.CUBE })} className={`flex-1 py-1 rounded text-[10px] font-bold border ${selectedStartPosData.mode === VehicleMode.CUBE ? 'bg-blue-600 border-blue-400 text-white' : 'bg-gray-800 border-gray-600 text-gray-400'}`}>CUBE</button>
                                       <button onClick={() => onUpdateStartPos({ mode: VehicleMode.SHIP })} className={`flex-1 py-1 rounded text-[10px] font-bold border ${selectedStartPosData.mode === VehicleMode.SHIP ? 'bg-pink-600 border-pink-400 text-white' : 'bg-gray-800 border-gray-600 text-gray-400'}`}>SHIP</button>
+                                      <button onClick={() => onUpdateStartPos({ mode: VehicleMode.BALL })} className={`flex-1 py-1 rounded text-[10px] font-bold border ${selectedStartPosData.mode === VehicleMode.BALL ? 'bg-red-600 border-red-400 text-white' : 'bg-gray-800 border-gray-600 text-gray-400'}`}>BALL</button>
                                   </div>
                                   <button onClick={() => onUpdateStartPos({ reverseGravity: !selectedStartPosData.reverseGravity })} className={`w-full py-1 rounded text-[10px] font-bold border flex items-center justify-center gap-1 ${selectedStartPosData.reverseGravity ? 'bg-purple-600 border-purple-400 text-white' : 'bg-gray-800 border-gray-600 text-gray-400'}`}>
                                       {selectedStartPosData.reverseGravity ? <ArrowUp size={12}/> : <ArrowDown size={12}/>} GRAVITY: {selectedStartPosData.reverseGravity ? 'FLIPPED' : 'NORMAL'}
@@ -621,6 +634,12 @@ const UIOverlay: React.FC<UIProps> = ({
                                     <ToolBtn active={isToolActive(ObjectType.PORTAL, 2)} onClick={() => onSelectTool(ObjectType.PORTAL, 2)}>
                                         <svg viewBox="0 0 40 40" className="w-full h-full">
                                             <path d="M 12 5 L 28 5 L 28 15 L 25 20 L 28 25 L 28 35 L 12 35 L 12 25 L 15 20 L 12 15 Z" fill="rgba(255,102,204,0.6)" stroke="white" strokeWidth="2"/>
+                                            <ellipse cx="20" cy="20" rx="2" ry="12" fill="white"/>
+                                        </svg>
+                                    </ToolBtn>
+                                    <ToolBtn active={isToolActive(ObjectType.PORTAL, 8)} onClick={() => onSelectTool(ObjectType.PORTAL, 8)}>
+                                        <svg viewBox="0 0 40 40" className="w-full h-full">
+                                            <path d="M 12 5 L 28 5 L 28 15 L 25 20 L 28 25 L 28 35 L 12 35 L 12 25 L 15 20 L 12 15 Z" fill="rgba(255,50,50,0.6)" stroke="white" strokeWidth="2"/>
                                             <ellipse cx="20" cy="20" rx="2" ry="12" fill="white"/>
                                         </svg>
                                     </ToolBtn>
