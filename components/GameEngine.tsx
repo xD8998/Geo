@@ -9,6 +9,7 @@ interface GameEngineProps {
   onSelectionChange: (count: number, hasBlock: boolean, selectedId?: string) => void;
   showHitboxes: boolean;
   onHistoryChange: (canUndo: boolean, canRedo: boolean) => void;
+  onCompletion: (usedStartPos: boolean) => void;
 }
 
 export interface GameEngineRef {
@@ -78,7 +79,7 @@ const checkPolygonInteract = (poly1: {x:number, y:number}[], rect2: {x:number, y
     return true;
 };
 
-const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeChange, selectedTool, onSelectionChange, showHitboxes, onHistoryChange }, ref) => {
+const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeChange, selectedTool, onSelectionChange, showHitboxes, onHistoryChange, onCompletion }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const requestRef = useRef<number>(0);
   
@@ -110,7 +111,8 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
     onGround: false, dead: false, finished: false,
     vehicle: VehicleMode.CUBE,
     gravityReversed: false,
-    mirrored: false
+    mirrored: false,
+    rotVelocity: 0
   });
   
   const activeFloorY = useRef<number>(FLOOR_Y);
@@ -137,6 +139,7 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
   const showHitboxesRef = useRef(showHitboxes);
   const frameCount = useRef<number>(0);
   const pendingReset = useRef<boolean>(false); // Flag to handle reset after resuming from pause during death
+  const usedStartPosRef = useRef<boolean>(false);
   
   // Tool Rotation Memory
   const lastToolRotation = useRef<number>(0);
@@ -340,30 +343,29 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
     let startY = 11 * TILE_SIZE;
     let startMode = levelSettings.current.startMode;
     let startGravityReversed = levelSettings.current.startReverseGravity || false;
+    usedStartPosRef.current = false;
 
-    // Check for enabled Start Pos (Only in Playtest, NOT Verify)
-    if (!forVerify) {
-        // Find valid start pos
-        const startPositions = levelData.current
-            .map((obj, index) => ({ obj, index }))
-            .filter(item => item.obj.type === ObjectType.START_POS && item.obj.startPosData && item.obj.startPosData.enabled);
+    // Check for enabled Start Pos (Always check, even in verify mode as requested)
+    const startPositions = levelData.current
+        .map((obj, index) => ({ obj, index }))
+        .filter(item => item.obj.type === ObjectType.START_POS && item.obj.startPosData && item.obj.startPosData.enabled);
+    
+    if (startPositions.length > 0) {
+        // Sort: 
+        // 1. Right-most X (Descending). Highest X takes priority.
+        // 2. Most recent (Descending Index) as tie-breaker.
+        startPositions.sort((a, b) => {
+            if (Math.abs(a.obj.x - b.obj.x) > 0.01) return b.obj.x - a.obj.x; // Descending Sort
+            return b.index - a.index;
+        });
         
-        if (startPositions.length > 0) {
-            // Sort: 
-            // 1. Right-most X (Descending). Highest X takes priority.
-            // 2. Most recent (Descending Index) as tie-breaker.
-            startPositions.sort((a, b) => {
-                if (Math.abs(a.obj.x - b.obj.x) > 0.01) return b.obj.x - a.obj.x; // Descending Sort
-                return b.index - a.index;
-            });
-            
-            const best = startPositions[0].obj;
-            if (best.startPosData) {
-                startX = best.x * TILE_SIZE;
-                startY = best.y * TILE_SIZE;
-                startMode = best.startPosData.mode;
-                startGravityReversed = best.startPosData.reverseGravity;
-            }
+        const best = startPositions[0].obj;
+        if (best.startPosData) {
+            startX = best.x * TILE_SIZE;
+            startY = best.y * TILE_SIZE;
+            startMode = best.startPosData.mode;
+            startGravityReversed = best.startPosData.reverseGravity;
+            usedStartPosRef.current = true;
         }
     }
 
@@ -375,7 +377,8 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
       onGround: true, dead: false, finished: false,
       vehicle: startMode,
       gravityReversed: startGravityReversed,
-      mirrored: false
+      mirrored: false,
+      rotVelocity: 0
     };
     
     mirrorTransition.current = 0; // Reset mirror
@@ -384,14 +387,9 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
     deathMarkers.current = [];
     usedObjectIds.current.clear();
     
-    if (forVerify) {
-      camera.current.x = 0;
-      trail.current = [];
-    } else {
-      // In Editor Playtest, snap camera to start pos
-      camera.current.x = startX - 200; // Offset slightly
-      trail.current = [];
-    }
+    // Snap camera to start position always to avoid jarring jump
+    camera.current.x = Math.max(0, startX - 200); 
+    trail.current = [];
     
     particles.current = [];
     isSuckedIntoWall.current = false;
@@ -497,6 +495,10 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
              activeCeilingY.current = FLOOR_Y - (10 * TILE_SIZE);
              targetCeilingY.current = FLOOR_Y - (10 * TILE_SIZE);
         }
+    } else if (startMode === VehicleMode.BALL) {
+        // Ball mode ceiling is 8 blocks high
+        activeCeilingY.current = FLOOR_Y - (8 * TILE_SIZE);
+        targetCeilingY.current = FLOOR_Y - (8 * TILE_SIZE);
     } else {
         activeCeilingY.current = -99999;
         targetCeilingY.current = -99999;
@@ -1172,7 +1174,7 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
           }
           // If already < -90000, do nothing (stay disabled)
       } else {
-          // Enable mode (Ship)
+          // Enable mode (Ship, Ball)
           if (activeCeilingY.current < -90000) {
               // Initialize from top
               activeCeilingY.current = camera.current.y - 1000; 
@@ -1193,7 +1195,12 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
               targetMirror = 0;
           }
       }
-      mirrorTransition.current += (targetMirror - mirrorTransition.current) * 0.1;
+      
+      if (currentMode === GameMode.EDITOR) {
+          mirrorTransition.current = 0;
+      } else {
+          mirrorTransition.current += (targetMirror - mirrorTransition.current) * 0.1;
+      }
       
       // Color Interpolation Logic
       if (currentMode !== GameMode.PAUSED && currentMode !== GameMode.VERIFY_PAUSED) {
@@ -1275,9 +1282,15 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
              const ceiling = targetCeilingY.current;
              const midY = (floor + ceiling) / 2;
              targetY = midY - (visibleHeight * 0.5);
+        } else if (p.vehicle === VehicleMode.BALL && targetCeilingY.current > -90000) {
+            // BALL MODE CAMERA STABILITY
+             const floor = targetFloorY.current;
+             const ceiling = targetCeilingY.current;
+             const midY = (floor + ceiling) / 2;
+             targetY = midY - (visibleHeight * 0.5);
         } else {
-             targetY = p.y - (visibleHeight * 0.45); // Player at 45% of screen height (higher up)
-             const maxCamY = FLOOR_Y - visibleHeight + 125; // Allow more ground visibility
+             targetY = p.y - (visibleHeight * 0.5); // Reverted to 0.5 (Center)
+             const maxCamY = FLOOR_Y - visibleHeight + 100; // Relaxed clamp
              if (targetY > maxCamY) targetY = maxCamY;
         }
 
@@ -1347,6 +1360,7 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
                           if (obj.subtype === 5) color = COLORS.objPortalGreen;
                           if (obj.subtype === 6) color = COLORS.objPortalBlueMirror;
                           if (obj.subtype === 7) color = COLORS.objPortalOrange;
+                          if (obj.subtype === 8) color = COLORS.objPortalRed;
 
                            particles.current.push({
                              x: cx + (Math.random() - 0.5) * 20,
@@ -1393,6 +1407,7 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
           }
       });
   };
+  
 
   const jump = () => {
     const p = player.current;
@@ -1402,6 +1417,18 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
         p.vy = JUMP_FORCE; // Jump Up (negative Y)
     }
     p.onGround = false;
+  };
+  
+  const ballFlip = () => {
+    const p = player.current;
+    if (!p.onGround) return;
+    
+    p.gravityReversed = !p.gravityReversed;
+    p.onGround = false;
+    // Ball doesn't really "jump", it just falls in the opposite direction
+    // If we're on the ground, vy is 0. Gravity will start accelerating us.
+    // However, to ensure we detach from the floor immediately:
+    p.vy = p.gravityReversed ? -4.0 : 4.0; // Stronger push for strict feel
   };
 
   const updatePhysics = (width: number, height: number) => {
@@ -1416,6 +1443,7 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
         p.rotation += 0.5;
         if (p.w < 1) {
           isSuckedIntoWall.current = false;
+          onCompletion(usedStartPosRef.current);
           onModeChange(GameMode.COMPLETE);
         }
       }
@@ -1429,6 +1457,7 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
       return;
     }
 
+    // Input state capture
     const isInputDown = keys.current['Space'] || keys.current['ArrowUp'] || mouse.current.isDown;
     const inputJustPressed = isInputDown && !prevInputState.current;
     prevInputState.current = isInputDown;
@@ -1437,6 +1466,9 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
     if (!isInputDown) hasInputUsed.current = false;
 
     p.x += PLAYER_SPEED;
+    
+    // IMPORTANT: Reset onGround at start of frame
+    p.onGround = false; 
 
     if (p.vehicle === VehicleMode.CUBE) {
         // Gravity Application
@@ -1462,27 +1494,64 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
                 p.vy = 0;
                 p.onGround = true;
                 p.rotation = 0;
-            } else {
-                p.onGround = false;
             }
         } else {
              // Ceiling becomes floor (if activeCeiling exists, otherwise infinite fall up)
-             // However, activeCeilingY is usually -99999 unless ship mode triggers it.
-             // If we want a 'ceiling' floor for cube, we'd need that enabled.
-             // For now, reverse gravity cube falls into sky if no blocks.
              if (activeCeilingY.current > -90000 && p.y <= activeCeilingY.current) {
                  p.y = activeCeilingY.current;
                  p.vy = 0;
                  p.onGround = true;
                  p.rotation = 0;
              } else {
-                 p.onGround = false;
-                 
                  // SPECIAL CASE: If reverse gravity cube hits standard floor, DIE
                  if (p.y + p.h > activeFloorY.current) {
                      die();
                      return;
                  }
+             }
+        }
+    } else if (p.vehicle === VehicleMode.BALL) {
+        // BALL PHYSICS
+        // Gravity is applied normally
+        if (p.gravityReversed) {
+            p.vy -= GRAVITY; // Fall Up (Negative Y)
+            if (p.vy < -TERMINAL_VELOCITY) p.vy = -TERMINAL_VELOCITY;
+        } else {
+            p.vy += GRAVITY; // Fall Down (Positive Y)
+            if (p.vy > TERMINAL_VELOCITY) p.vy = TERMINAL_VELOCITY;
+        }
+
+        p.y += p.vy;
+        
+        const flr = activeFloorY.current;
+        const ceil = activeCeilingY.current > -90000 ? activeCeilingY.current : -99999;
+
+        // Floor Logic (Normal Gravity)
+        if (!p.gravityReversed) {
+             // Land on Floor
+             if (p.y + p.h >= flr) {
+                p.y = flr - p.h;
+                p.vy = 0;
+                p.onGround = true;
+             }
+             // Hit Ceiling (Head) - Non-lethal
+             if (ceil > -90000 && p.y <= ceil) {
+                 p.y = ceil;
+                 if (p.vy < 0) p.vy = 0; // Stop upward velocity
+             }
+        } 
+        // Ceiling Logic (Reverse Gravity)
+        else {
+             // Land on Ceiling
+             if (ceil > -90000 && p.y <= ceil) {
+                 p.y = ceil;
+                 p.vy = 0;
+                 p.onGround = true;
+             }
+             // Hit Floor (Head) - Non-lethal
+             if (p.y + p.h >= flr) {
+                 p.y = flr - p.h;
+                 if (p.vy > 0) p.vy = 0; // Stop downward velocity
              }
         }
 
@@ -1531,6 +1600,7 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
     const pRight = p.x + p.w;
     const pCx = p.x + p.w/2;
     
+    // --- COLLISION LOOP ---
     for (const obj of levelData.current) {
       // Check for Trigger Activation
       if (obj.type === ObjectType.TRIGGER && obj.triggerData) {
@@ -1620,64 +1690,111 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
                        }
                    }
               } else {
-                  // CUBE LOGIC (GRAVITY AWARE)
-                  if (obj.subtype === 3) { 
-                       // Slab Logic
-                       const rot = (obj.rotation || 0) % 360;
-                       const isBottomSlab = Math.abs(rot - 180) < 10;
-                       
-                       let sTop, sBot;
-                       if (isBottomSlab) {
-                           sTop = obj.y * TILE_SIZE + 20; 
-                           sBot = obj.y * TILE_SIZE + 40;
-                       } else {
-                           sTop = obj.y * TILE_SIZE; 
-                           sBot = obj.y * TILE_SIZE + 20;
-                       }
+                  // CUBE & BALL LOGIC (GRAVITY AWARE)
+                  
+                  if (p.vehicle === VehicleMode.BALL) {
+                        // BALL SAFE HEAD BUMP LOGIC
+                        let bTop = blockTop;
+                        let bBot = blockBottom;
+                        
+                        if (obj.subtype === 3) { 
+                           const rot = (obj.rotation || 0) % 360;
+                           const isBottomSlab = Math.abs(rot - 180) < 10;
+                           if (isBottomSlab) { bTop += 20; bBot = (obj.y+1)*TILE_SIZE; } 
+                           else { bBot = obj.y*TILE_SIZE + 20; } 
+                        }
 
-                       if (!p.gravityReversed) {
-                           // Standard Gravity: Land on Top
-                           const wasAbove = prevY + p.h <= sTop + Math.max(Math.abs(p.vy), 5);
-                           if (wasAbove && p.vy >= 0) {
-                               p.y = sTop - p.h;
-                               p.vy = 0;
-                               p.onGround = true;
-                               p.rotation = 0;
-                               continue;
-                           } else { die(); return; }
-                       } else {
-                           // Reversed Gravity: Land on Bottom
-                           const wasBelow = prevY >= sBot - Math.max(Math.abs(p.vy), 5);
-                           if (wasBelow && p.vy <= 0) {
-                               p.y = sBot;
-                               p.vy = 0;
-                               p.onGround = true;
-                               p.rotation = 0;
-                               continue;
-                           } else { die(); return; }
-                       }
+                        const tolerance = Math.max(Math.abs(p.vy), 5);
+
+                        if (!p.gravityReversed) {
+                            // Check Landing (Top)
+                            if (prevY + p.h <= bTop + tolerance && p.vy >= 0) {
+                                p.y = bTop - p.h;
+                                p.vy = 0;
+                                p.onGround = true;
+                                continue;
+                            }
+                            // Check Head (Bottom) - SAFE COLLISION (Don't Die)
+                            if (prevY >= bBot - tolerance && p.vy <= 0) {
+                                p.y = bBot;
+                                p.vy = 0; // Stop
+                                continue;
+                            }
+                            // Side Collision
+                            die(); return;
+                        } else {
+                            // Check Landing (Bottom)
+                            if (prevY >= bBot - tolerance && p.vy <= 0) {
+                                p.y = bBot;
+                                p.vy = 0;
+                                p.onGround = true;
+                                continue;
+                            }
+                            // Check Head (Top) - SAFE COLLISION (Don't Die)
+                            if (prevY + p.h <= bTop + tolerance && p.vy >= 0) {
+                                p.y = bTop - p.h;
+                                p.vy = 0; // Stop
+                                continue;
+                            }
+                            // Side Collision
+                            die(); return;
+                        }
                   } else {
-                       if (!p.gravityReversed) {
-                           // Standard Gravity
-                           const wasAbove = prevY + p.h <= blockTop + Math.max(Math.abs(p.vy), 5);
-                           if (wasAbove && p.vy >= 0) {
-                               p.y = blockTop - p.h;
-                               p.vy = 0;
-                               p.onGround = true;
-                               p.rotation = 0;
-                               continue;
-                           } else { die(); return; }
-                       } else {
-                           // Reversed Gravity: Land on Bottom of block
-                           const wasBelow = prevY >= blockBottom - Math.max(Math.abs(p.vy), 5);
-                           if (wasBelow && p.vy <= 0) {
-                               p.y = blockBottom;
-                               p.vy = 0;
-                               p.onGround = true;
-                               p.rotation = 0;
-                               continue;
-                           } else { die(); return; }
-                       }
+                      // CUBE LOGIC (Original Strict)
+                      if (obj.subtype === 3) { 
+                           // Slab Logic
+                           const rot = (obj.rotation || 0) % 360;
+                           const isBottomSlab = Math.abs(rot - 180) < 10;
+                           
+                           let sTop, sBot;
+                           if (isBottomSlab) {
+                               sTop = obj.y * TILE_SIZE + 20; 
+                               sBot = obj.y * TILE_SIZE + 40;
+                           } else {
+                               sTop = obj.y * TILE_SIZE; 
+                               sBot = obj.y * TILE_SIZE + 20;
+                           }
+    
+                           if (!p.gravityReversed) {
+                               const wasAbove = prevY + p.h <= sTop + Math.max(Math.abs(p.vy), 5);
+                               if (wasAbove && p.vy >= 0) {
+                                   p.y = sTop - p.h;
+                                   p.vy = 0;
+                                   p.onGround = true;
+                                   if (p.vehicle === VehicleMode.CUBE) p.rotation = 0;
+                                   continue;
+                               } else { die(); return; }
+                           } else {
+                               const wasBelow = prevY >= sBot - Math.max(Math.abs(p.vy), 5);
+                               if (wasBelow && p.vy <= 0) {
+                                   p.y = sBot;
+                                   p.vy = 0;
+                                   p.onGround = true;
+                                   if (p.vehicle === VehicleMode.CUBE) p.rotation = 0;
+                                   continue;
+                               } else { die(); return; }
+                           }
+                      } else {
+                           if (!p.gravityReversed) {
+                               const wasAbove = prevY + p.h <= blockTop + Math.max(Math.abs(p.vy), 5);
+                               if (wasAbove && p.vy >= 0) {
+                                   p.y = blockTop - p.h;
+                                   p.vy = 0;
+                                   p.onGround = true;
+                                   if (p.vehicle === VehicleMode.CUBE) p.rotation = 0;
+                                   continue;
+                               } else { die(); return; }
+                           } else {
+                               const wasBelow = prevY >= blockBottom - Math.max(Math.abs(p.vy), 5);
+                               if (wasBelow && p.vy <= 0) {
+                                   p.y = blockBottom;
+                                   p.vy = 0;
+                                   p.onGround = true;
+                                   if (p.vehicle === VehicleMode.CUBE) p.rotation = 0;
+                                   continue;
+                               } else { die(); return; }
+                           }
+                      }
                   }
               }
           } else if (obj.type === ObjectType.PAD) {
@@ -1793,15 +1910,45 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
                           p.vehicle = VehicleMode.SHIP;
                           p.vy = 0; 
                       }
+                  } else if (obj.subtype === 8) { // RED PORTAL (BALL)
+                      if (obj.y <= 6) {
+                          // Tighter 8 stud corridor
+                          targetFloorY.current = (obj.y + 4) * TILE_SIZE;
+                          targetCeilingY.current = (obj.y - 4) * TILE_SIZE;
+                      } else {
+                          targetFloorY.current = FLOOR_Y;
+                          targetCeilingY.current = FLOOR_Y - (8 * TILE_SIZE);
+                      }
+                      if (p.vehicle !== VehicleMode.BALL) {
+                          p.vehicle = VehicleMode.BALL;
+                          p.vy = 0;
+                          p.rotVelocity = 0; // Reset spin
+                      }
                   }
                   
                   // GRAVITY PORTALS
                   if (obj.subtype === 3) { // Yellow (Reverse)
-                      if (!p.gravityReversed) p.gravityReversed = true;
+                      if (!p.gravityReversed) {
+                          p.gravityReversed = true;
+                          if (p.vehicle === VehicleMode.BALL) {
+                              // Smooth transition: Reset vertical velocity so gravity takes over naturally
+                              p.vy = 0; 
+                          }
+                      }
                   } else if (obj.subtype === 4) { // Blue (Normal)
-                      if (p.gravityReversed) p.gravityReversed = false;
+                      if (p.gravityReversed) {
+                          p.gravityReversed = false;
+                          if (p.vehicle === VehicleMode.BALL) {
+                              // Smooth transition: Reset vertical velocity so gravity takes over naturally
+                              p.vy = 0;
+                          }
+                      }
                   } else if (obj.subtype === 5) { // Green (Toggle)
                       p.gravityReversed = !p.gravityReversed;
+                      if (p.vehicle === VehicleMode.BALL) {
+                          // Smooth transition: Reset vertical velocity so gravity takes over naturally
+                          p.vy = 0;
+                      }
                   }
 
                   // MIRROR PORTALS - Only Active in Verify Mode
@@ -1819,9 +1966,25 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
       }
     }
 
+    // --- INPUT PROCESSING (Post-Collision) ---
+    // Now p.onGround reflects the state after checking floor AND blocks this frame.
+    
     if (p.vehicle === VehicleMode.CUBE) {
         if (p.onGround && isInputDown) {
             jump();
+            hasInputUsed.current = true;
+        }
+    } else if (p.vehicle === VehicleMode.BALL) {
+        // Calculate Rotation for Visuals
+        let targetRotVel = 0;
+        if (p.onGround) {
+            targetRotVel = p.gravityReversed ? -0.2 : 0.2;
+        }
+        p.rotVelocity = (p.rotVelocity || 0) * 0.9 + targetRotVel * 0.1;
+        p.rotation += (p.rotVelocity || 0);
+
+        if (p.onGround && inputJustPressed) {
+            ballFlip();
             hasInputUsed.current = true;
         }
     }
@@ -2082,6 +2245,7 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
           if (obj.subtype === 5) color = COLORS.objPortalGreen;
           if (obj.subtype === 6) color = COLORS.objPortalBlueMirror;
           if (obj.subtype === 7) color = COLORS.objPortalOrange;
+          if (obj.subtype === 8) color = COLORS.objPortalRed; // BALL
 
           // Use passed coordinates to determine center
           const cx = x + TILE_SIZE / 2;
@@ -2091,7 +2255,7 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
           const w = 30;
           const hw = w/2;
 
-          if (obj.subtype <= 2) {
+          if (obj.subtype <= 2 || obj.subtype === 8) {
               // GAMEMODE PORTALS (Original Blocky Hourglass)
               ctx.fillStyle = color;
               ctx.strokeStyle = '#fff';
@@ -2419,6 +2583,47 @@ const GameEngine = forwardRef<GameEngineRef, GameEngineProps>(({ mode, onModeCha
                  ctx.strokeRect(-p.w/2, -p.h/2, p.w, p.h);
                  
                  // Eyes Removed
+             } else if (p.vehicle === VehicleMode.BALL) {
+                 // DRAW BALL (Clean Gear Style)
+                 ctx.fillStyle = COLORS.playerFill;
+                 ctx.strokeStyle = 'black';
+                 ctx.lineWidth = 2;
+                 
+                 const r = p.w / 2;
+                 // Use Math.max to prevent negative radius error during shrink animation
+                 const safeR = Math.max(0, r - 2);
+                 
+                 // Draw outer circle background
+                 ctx.beginPath();
+                 ctx.arc(0, 0, safeR, 0, Math.PI * 2);
+                 ctx.fill();
+                 
+                 // Draw Spikes / Gears
+                 ctx.beginPath();
+                 const numTeeth = 8;
+                 const outerR = Math.max(0, r + 2);
+                 const innerR = Math.max(0, r - 4);
+                 
+                 for (let i = 0; i < numTeeth * 2; i++) {
+                     const angle = (Math.PI * 2 * i) / (numTeeth * 2);
+                     const rad = i % 2 === 0 ? outerR : innerR;
+                     const x = Math.cos(angle) * rad;
+                     const y = Math.sin(angle) * rad;
+                     if (i===0) ctx.moveTo(x,y);
+                     else ctx.lineTo(x,y);
+                 }
+                 ctx.closePath();
+                 ctx.fill();
+                 ctx.stroke();
+                 
+                 // Inner Detail Ring
+                 ctx.fillStyle = COLORS.playerDetail;
+                 ctx.beginPath();
+                 ctx.arc(0, 0, Math.max(0, r * 0.5), 0, Math.PI*2);
+                 ctx.fill();
+                 ctx.strokeStyle = 'black';
+                 ctx.lineWidth = 1;
+                 ctx.stroke();
              } else {
                  // Draw Ship
                  ctx.scale(1, p.gravityReversed ? -1 : 1);
