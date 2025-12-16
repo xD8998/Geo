@@ -24,6 +24,7 @@ export enum GameMode {
 export enum VehicleMode {
   CUBE = 'CUBE',
   SHIP = 'SHIP',
+  BALL = 'BALL',
 }
 
 export interface LevelSettings {
@@ -80,6 +81,7 @@ export interface Player {
   vehicle: VehicleMode;
   gravityReversed: boolean;
   mirrored: boolean;
+  rotVelocity?: number; // Added for Ball smooth rotation
 }
 
 export interface Camera {
