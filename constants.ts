@@ -53,6 +53,7 @@ export const COLORS = {
   objPortalBlue: '#00ffff',
   objPortalOrange: '#ffaa00',
   objPortalBlueMirror: '#00aaff',
+  objPortalRed: '#ff3333', // Red Portal Color
   shipCeiling: 'rgba(255, 255, 255, 0.3)',
   triggerLine: 'rgba(0, 200, 255, 0.5)',
   triggerDurationLine: 'rgba(150, 150, 150, 0.5)',
